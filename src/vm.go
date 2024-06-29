@@ -7,10 +7,9 @@ const UINT16_MAX = 255 * 255
 
 type VM struct {
 	chunk   *Chunk
-	ip      int              // INSTRUCTION POINTER - pointer to the the current instruction-nr were working on in the chunk
-	stack   []Value          // Stack that holds all currently 'in memory' Values
-	globals map[string]Value // HashMap (key: identifiers, value=global values)
-	strings map[string]Value // to enable string-interning we store all active-string variables in this table
+	ip      int
+	stack   []Value
+	globals map[string]Value
 }
 
 func NewVM(base_chunk *Chunk) *VM {
@@ -18,7 +17,6 @@ func NewVM(base_chunk *Chunk) *VM {
 		chunk:   base_chunk,
 		stack:   make([]Value, 0, UINT8_MAX+1),
 		globals: map[string]Value{},
-		strings: map[string]Value{},
 	}
 }
 
@@ -31,13 +29,13 @@ func (vm *VM) push(v Value) {
 
 func (vm *VM) pop() Value {
 	n := len(vm.stack)
-	res := vm.stack[n-1] // we can decrement first then retreive the top/removed element
+	res := vm.stack[n-1]
 	vm.stack = vm.stack[0 : n-1]
 	return res
 }
 func (vm *VM) peek(distance int) Value {
 	n := len(vm.stack)
-	return vm.stack[n-1-distance] // we can decrement first then retreive the top/removed element
+	return vm.stack[n-1-distance]
 }
 
 func (vm *VM) readByte() byte {
@@ -213,7 +211,7 @@ func (vm *VM) run() {
 		case OP_CONST:
 			vm.push(vm.readConst())
 		case OP_POP:
-			vm.pop() // pop value from stack and forget it.
+			vm.pop()
 
 		case OP_DEF_GLOBAL:
 			name := vm.readString().inner
@@ -288,7 +286,6 @@ func (vm *VM) run() {
 	}
 }
 
-// takes the source-code string (from file or repl) and interprets/runs it
 func Interpret(input string) {
 	pc := NewParserCompiler(input)
 	pc.compile()
