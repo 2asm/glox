@@ -1,0 +1,18 @@
+fn fact(n) {
+    if n <= 1 {
+        return 1;
+    }
+    return n * fact(n-1);
+}
+
+let n = 6;
+print "factorial of", n, "is", fact(n);
+
+let i = 0;
+let sm = 0;
+while i <= 1_000_000 {
+    i += 1;
+    sm += i;
+}
+
+print sm;

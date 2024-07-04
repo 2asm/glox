@@ -78,6 +78,7 @@ const (
 	WHILE    // while
 	BREAK    // break
 	CONTINUE // continue
+	NIL      // nil
 
 	// builtin
 	PRINT // print
@@ -148,6 +149,7 @@ func (tk TokenKind) String() string {
 
 		"BREAK",
 		"CONTINUE",
+		"NIL",
 
 		"PRINT",
 	}
@@ -182,6 +184,7 @@ var Keywords = map[string]TokenKind{
 	"while":    WHILE,
 	"break":    BREAK,
 	"continue": CONTINUE,
+	"nil":      NIL,
 }
 
 var Builtins = map[string]TokenKind{
@@ -190,8 +193,8 @@ var Builtins = map[string]TokenKind{
 
 const (
 	LOWEST_PREC  = 0 // non-operators
-	UNARY_PREC   = 6
-	HIGHEST_PREC = 7
+	UNARY_PREC   = 7
+	HIGHEST_PREC = 8
 )
 
 // precedence order copied from golang
@@ -207,6 +210,8 @@ func (op TokenKind) Prec() int {
 		return 4
 	case MUL, DIV, MOD, LSH, RSH, AND:
 		return 5
+	case LPAREN:
+		return 6
 	}
 	return LOWEST_PREC
 }

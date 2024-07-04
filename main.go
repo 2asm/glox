@@ -2,22 +2,18 @@ package main
 
 import (
 	"fmt"
-	"github.com/2asm/glox/src"
+	"os"
+
+	glox "github.com/2asm/glox/src"
 )
 
 func main() {
-	var s = `
-let i = 0;
-let sum = 0;
-while i < 1_000_000 {
-    i += 1;
-    sum += i;
-}
-print sum;
-`
-	fmt.Println("-----------------------")
-	fmt.Println(s)
-	fmt.Println("-----------------------")
-	glox.Interpret(s)
-
+	s, err := os.ReadFile(os.Args[1])
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	if err := glox.Interpret(string(s)); err != nil {
+        fmt.Println("ERROR: ", err.Error())
+	}
 }

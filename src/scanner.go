@@ -5,10 +5,11 @@ import (
 )
 
 type Scanner struct {
-	Input []rune
-	Index int
-	Len   int
-	Line  int
+	Input    []rune
+	Index    int
+	Len      int
+	Line     int
+	isPanic  bool
 }
 
 func NewScanner(input string) *Scanner {
@@ -31,7 +32,7 @@ func (sc *Scanner) lookahead(ind int) rune {
 func (sc *Scanner) consume(c rune) {
 	ch := sc.lookahead(0)
 	if ch != c {
-		panic(fmt.Sprintf("illegal character '%v' on line %v", ch, sc.Line))
+		sc.isPanic = true
 	}
 	sc.Index += 1
 	if ch == '\n' {
@@ -53,13 +54,14 @@ func (sc *Scanner) readInt() ([]rune, bool) {
 			}
 		} else {
 			cur_underscore = 0
-            str = append(str, ch)
+			str = append(str, ch)
 		}
 		end_char = ch
 		sc.consume(ch)
 		ch = sc.lookahead(0)
 	}
 	if max_underscore > 1 || end_char == '_' {
+		sc.isPanic = true
 		return str, false
 	}
 	return str, true
@@ -133,6 +135,9 @@ func (sc *Scanner) Next() Token {
 	case ';':
 		sc.consume(ch)
 		return NewToken(SEMI, nil, lin)
+	case ',':
+		sc.consume(',')
+		return NewToken(COMMA, nil, lin)
 	case '\n':
 		sc.consume(ch)
 		return sc.Next()
@@ -160,10 +165,14 @@ func (sc *Scanner) Next() Token {
 			sc.consume('/')
 			sc.consume('*')
 			comment := []rune{}
-			for sc.lookahead(0) != '*' && sc.lookahead(1) != '/' {
+			for {
 				if sc.lookahead(0) == 0 {
-					errorMsg := fmt.Sprintf("ILLEGAL character('%v')", string(ch))
+					sc.isPanic = true
+					errorMsg := fmt.Sprintf("ILLEGAL character '%v';%v", string(ch), sc.Line)
 					return NewToken(ILLEGAL, &errorMsg, lin)
+				}
+				if sc.lookahead(0) == '*' && sc.lookahead(1) == '/' {
+					break
 				}
 				comment = append(comment, sc.lookahead(0))
 				sc.consume(sc.lookahead(0))
@@ -238,6 +247,7 @@ func (sc *Scanner) Next() Token {
 		ch = sc.lookahead(0)
 		for ch != '"' {
 			if ch == '\n' || ch == 0 {
+				sc.isPanic = true
 				return NewToken(ILLEGAL, nil, lin)
 			}
 			str = append(str, sc.lookahead(0))
@@ -249,8 +259,8 @@ func (sc *Scanner) Next() Token {
 		return NewToken(STR_LIT, &str_str, lin)
 	}
 	sc.consume(ch) // keep going even if character is invalid
-	errorMsg := fmt.Sprintf("invalid character '%v'", string(ch))
-	return NewToken(ILLEGAL, &errorMsg, lin)
+	sc.isPanic = true
+	return NewToken(ILLEGAL, nil, lin)
 }
 
 func (sc *Scanner) Peek(d int) Token {

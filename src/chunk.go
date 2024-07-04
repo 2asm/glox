@@ -50,6 +50,8 @@ const (
 	OP_JUMP
 	OP_JUMP_IF_FALSE
 	OP_JUMP_BACK
+    OP_CALL
+    OP_NIL
 )
 
 func (o OpCode) String() string {
@@ -60,7 +62,7 @@ func (o OpCode) String() string {
 		"OP_LOR ", "OP_LAND ", "OP_EQL ", "OP_GTR ", "OP_LSS ",
 		"OP_ADD ", "OP_SUB ", "OP_OR  ", "OP_XOR ", "OP_MULT ", "OP_DIV  ", "OP_MOD ", "OP_LSH ", "OP_RSH  ", "OP_AND ",
 		"OP_UNARY_NOT ", "OP_UNARY_ADD ", "OP_UNARY_SUB ", "OP_UNARY_TILDE ",
-		"OP_PRINT ", "OP_RETURN ", "OP_JUMP", "OP_JUMP_IF_FALSE", "OP_JUMP_BACK",
+		"OP_PRINT ", "OP_RETURN ", "OP_JUMP", "OP_JUMP_IF_FALSE", "OP_JUMP_BACK", "OP_CALL", "OP_NIL",
 	}
 	return strs[o]
 }

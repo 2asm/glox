@@ -1,7 +1,6 @@
 package glox
 
 import (
-	"fmt"
 	"strconv"
 )
 
@@ -15,10 +14,11 @@ whileStmt
 blockStmt
 emptyStmt
 assignStmt
+breakStmt
 
 --- declaration ---
 structDecl
-funDecl
+funcDecl
 varDecl
 statement
 
@@ -26,91 +26,150 @@ statement
 // TODO
 // --- top level declaration ---
 // structDecl
-// funDecl
+// funcDecl
 // varDecl
 */
+
+type Compiler struct {
+	enclosing *Compiler // Each Compiler points back to the Comnpiler for the function that encloses it
+	function  *FuntionObject
+	top_level bool
+	//function.chunk   *Chunk
+	locals     []Local
+	scopeDepth int
+	loopDepth  int
+	breaks     []int
+}
+
+type Parser struct {
+	*Scanner
+	*Compiler
+}
 
 type Local struct {
 	name  Token
 	depth int
 }
 
-type ParserCompiler struct {
-	*Scanner
-	curChunk   *Chunk // current compiling chunk
-	locals     []Local
-	scopeDepth int
+func NewParser(input string) *Parser {
+	return &Parser{Scanner: NewScanner(input), Compiler: NewCompiler(nil, true)}
 }
 
-func NewParserCompiler(input string) *ParserCompiler {
-	return &ParserCompiler{
-		Scanner:  NewScanner(input),
-		curChunk: NewChunk(),
-		locals:   make([]Local, 0, 256),
+func NewCompiler(enclosing *Compiler, top_level bool) *Compiler {
+	return &Compiler{
+		enclosing:  enclosing,
+		function:   &FuntionObject{chunk: NewChunk()},
+		top_level:  top_level,
+		locals:     make([]Local, 0, 256),
+		scopeDepth: 0,
 	}
 }
 
-func (p *ParserCompiler) consume(kind TokenKind) Token {
+func (p *Parser) consume(kind TokenKind) Token {
 	t := p.Next()
 	if t.Kind != kind {
-		panic(fmt.Sprintf("error invalid token %v at line %v, expeted  %v", t, p.Line, kind))
+		p.isPanic = true
 	}
 	return t
 }
 
-func (p *ParserCompiler) emitByte(bs ...byte) {
+func (p *Parser) emitByte(bs ...byte) {
 	for _, b := range bs {
-		p.curChunk.Write(b, p.Line)
+		p.function.chunk.Write(b, p.Line)
 	}
 }
 
-func (p *ParserCompiler) emitConst(val Value) {
-	ind := p.curChunk.AddConst(val)
+func (p *Parser) emitConst(val Value) {
+	ind := p.function.chunk.AddConst(val)
 	p.emitByte(byte(OP_CONST), byte(ind))
 }
 
-func (p *ParserCompiler) emitJumpBack(start int) {
+func (p *Parser) emitJumpBack(start int) {
 	p.emitByte(byte(OP_JUMP_BACK))
-	offset := len(p.curChunk.bytecode) - start + 2
+	offset := len(p.function.chunk.bytecode) - start + 2
 	if offset > UINT16_MAX {
-		panic("jump is too large")
+		p.isPanic = true
+		return
 	}
 	p.emitByte(byte(offset>>8), byte(offset&255))
 }
 
-func (p *ParserCompiler) emitJump(instruction OpCode) int {
+func (p *Parser) emitJump(instruction OpCode) int {
 	p.emitByte(byte(instruction), 0, 0)
-	return len(p.curChunk.bytecode) - 2
+	return len(p.function.chunk.bytecode) - 2
 }
 
-func (p *ParserCompiler) patchJump(offset int) {
-	jump := len(p.curChunk.bytecode) - offset - 2
+func (p *Parser) patchJump(offset int) {
+	jump := len(p.function.chunk.bytecode) - offset - 2
 	if jump > UINT16_MAX {
-		panic("jump is too large")
+		p.isPanic = true
+		return
 	}
-	p.curChunk.bytecode[offset] = byte(jump >> 8)
-	p.curChunk.bytecode[offset+1] = byte(jump & 255)
+	p.function.chunk.bytecode[offset] = byte(jump >> 8)
+	p.function.chunk.bytecode[offset+1] = byte(jump & 255)
 }
 
-func (p *ParserCompiler) varDecl() {
-	p.consume(LET)
-	name_token := p.consume(IDENT)
-	p.consume(ASSIGN)
-	p.parseExpr(LOWEST_PREC + 1)
-	p.consume(SEMI)
-	if p.scopeDepth == 0 {
-		ind := p.curChunk.AddConst(StringObject{inner: name_token.Lit})
+// add new variable
+func (p *Parser) addVar(name_token Token) {
+	if p.scopeDepth == 0 && p.top_level == true { // global
+		ind := p.function.chunk.AddConst(StringObject{inner: name_token.Lit})
 		p.emitByte(byte(OP_DEF_GLOBAL), byte(ind))
-	} else {
+	} else { // local
 		lcl := Local{name: name_token, depth: p.scopeDepth}
 		if len(p.locals) >= UINT8_MAX {
-			panic("too many local variables")
+			p.isPanic = true
+			return
 		}
 		p.locals = append(p.locals, lcl)
 	}
 }
 
-func (p *ParserCompiler) stmt() {
+func (p *Parser) varDecl() {
+	p.consume(LET)
+	name_token := p.consume(IDENT)
+	p.consume(ASSIGN)
+	p.parseExpr(LOWEST_PREC + 1)
+	p.consume(SEMI)
+
+	p.addVar(name_token)
+}
+
+func (p *Parser) funcDecl() {
+	p.consume(FUNC)
+	name_token := p.consume(IDENT)
+	new_compiler := NewCompiler(p.Compiler, false)
+	p.Compiler = new_compiler
+	p.scopeDepth++
+
+	p.consume(LPAREN)
+	for {
+		t := p.Peek(0)
+		if t.Kind == RPAREN || t.Kind == EOF {
+			break
+		}
+		var_token := p.consume(IDENT)
+		p.addVar(var_token)
+		p.function.arity += 1
+		t = p.Peek(0)
+		if t.Kind == RPAREN || t.Kind == EOF {
+			break
+		}
+		p.consume(COMMA)
+	}
+	p.consume(RPAREN)
+
+	p.block()
+
+	p.emitByte(byte(OP_NIL), byte(OP_RETURN))
+	f := p.Compiler.function
+
+	p.Compiler = p.Compiler.enclosing
+
+	p.emitConst(f)
+	p.addVar(name_token)
+}
+
+func (p *Parser) stmt() {
 	t := p.Peek(0)
 	switch t.Kind {
 	case PRINT:
@@ -121,6 +180,8 @@ func (p *ParserCompiler) stmt() {
 		p.ifStmt()
 	case WHILE:
 		p.whileStmt()
+	case BREAK:
+		p.breakStmt()
 	case RETURN:
 		p.returnStmt()
 	case SEMI:
@@ -135,27 +196,40 @@ func (p *ParserCompiler) stmt() {
 		}
 	default:
 		p.exprStmt()
-		// panic("not valid statement")
 	}
 }
 
-func (p *ParserCompiler) printStmt() {
+func (p *Parser) printStmt() {
 	p.consume(PRINT)
-	p.parseExpr(LOWEST_PREC + 1)
+
+	args_count := 0
+	for {
+		t := p.Peek(0)
+		if t.Kind == SEMI || t.Kind == EOF {
+			break
+		}
+		p.parseExpr(LOWEST_PREC + 1)
+		args_count += 1
+		t = p.Peek(0)
+		if t.Kind == SEMI || t.Kind == EOF {
+			break
+		}
+		p.consume(COMMA)
+	}
 	p.consume(SEMI)
-	p.emitByte(byte(OP_PRINT))
+	p.emitByte(byte(OP_PRINT), byte(args_count))
 }
-func (p *ParserCompiler) emptyStmt() {
+func (p *Parser) emptyStmt() {
 	p.consume(SEMI)
 }
 
-func (p *ParserCompiler) exprStmt() {
+func (p *Parser) exprStmt() {
 	p.parseExpr(LOWEST_PREC + 1)
 	p.consume(SEMI)
 	p.emitByte(byte(OP_POP))
 }
 
-func (p *ParserCompiler) localIndex(name Token) int {
+func (p *Parser) localIndex(name Token) int {
 	for i := len(p.locals) - 1; i >= 0; i -= 1 {
 		if *name.Lit == *p.locals[i].name.Lit {
 			return i
@@ -164,7 +238,7 @@ func (p *ParserCompiler) localIndex(name Token) int {
 	return -1
 }
 
-func (p *ParserCompiler) opAssign(assign TokenKind) {
+func (p *Parser) opAssign(assign TokenKind) {
 	p.parseExpr(LOWEST_PREC + 1)
 	switch assign {
 	case ADD_ASSIGN:
@@ -190,7 +264,7 @@ func (p *ParserCompiler) opAssign(assign TokenKind) {
 	}
 }
 
-func (p *ParserCompiler) getVar(is_local bool, ind int) {
+func (p *Parser) getVar(is_local bool, ind int) {
 	if is_local {
 		p.emitByte(byte(OP_GET_LOCAL), byte(ind))
 	} else {
@@ -198,7 +272,7 @@ func (p *ParserCompiler) getVar(is_local bool, ind int) {
 	}
 }
 
-func (p *ParserCompiler) setVar(is_local bool, ind int) {
+func (p *Parser) setVar(is_local bool, ind int) {
 	if is_local {
 		p.emitByte(byte(OP_SET_LOCAL), byte(ind))
 	} else {
@@ -206,12 +280,12 @@ func (p *ParserCompiler) setVar(is_local bool, ind int) {
 	}
 }
 
-func (p *ParserCompiler) assignStmt(assign TokenKind) {
+func (p *Parser) assignStmt(assign TokenKind) {
 	t := p.Next()
 	ind := p.localIndex(t)
 	is_local := ind != -1
 	if !is_local {
-		ind = p.curChunk.AddConst(StringObject{inner: t.Lit})
+		ind = p.function.chunk.AddConst(StringObject{inner: t.Lit})
 	}
 	p.consume(assign)
 	switch assign {
@@ -225,9 +299,7 @@ func (p *ParserCompiler) assignStmt(assign TokenKind) {
 	p.setVar(is_local, ind)
 }
 
-func (p *ParserCompiler) blockStmt() {
-	p.scopeDepth++
-
+func (p *Parser) block() {
 	p.consume(LBRACE)
 
 	for {
@@ -238,6 +310,12 @@ func (p *ParserCompiler) blockStmt() {
 		p.decl()
 	}
 	p.consume(RBRACE)
+}
+
+func (p *Parser) blockStmt() {
+	p.scopeDepth++
+
+	p.block()
 
 	p.scopeDepth--
 	n := len(p.locals) - 1
@@ -248,7 +326,7 @@ func (p *ParserCompiler) blockStmt() {
 	p.locals = p.locals[0 : n+1]
 }
 
-func (p *ParserCompiler) ifStmt() {
+func (p *Parser) ifStmt() {
 	p.consume(IF)
 	p.parseExpr(LOWEST_PREC + 1)
 
@@ -268,22 +346,59 @@ func (p *ParserCompiler) ifStmt() {
 	}
 	p.patchJump(jump_index_true)
 }
-func (p *ParserCompiler) whileStmt() {
+
+func (p *Parser) breakStmt() {
+	if p.loopDepth == 0 {
+		p.isPanic = true
+		return
+	}
+	p.consume(BREAK)
+	p.consume(SEMI)
+	exit := p.emitJump(OP_JUMP)
+	p.breaks = append(p.breaks, exit)
+}
+
+func (p *Parser) whileStmt() {
 	p.consume(WHILE)
-	start := len(p.curChunk.bytecode)
+	start := len(p.function.chunk.bytecode)
 	p.parseExpr(LOWEST_PREC + 1)
+
 	exit := p.emitJump(OP_JUMP_IF_FALSE)
 	p.emitByte(byte(OP_POP))
+
+	p.loopDepth += 1
 	p.blockStmt()
+	p.loopDepth -= 1
+
 	p.emitJumpBack(start)
 	p.patchJump(exit)
 	p.emitByte(byte(OP_POP))
+	for _, end := range p.breaks {
+		p.patchJump(end)
+	}
+	p.breaks = p.breaks[:0]
 }
-func (p *ParserCompiler) returnStmt() { panic("not implemented") }
 
-func (p *ParserCompiler) decl() {
+func (p *Parser) returnStmt() {
+	if p.top_level == true {
+		p.isPanic = true
+		return
+	}
+	p.consume(RETURN)
+	if p.Peek(0).Kind == SEMI {
+		p.emitByte(byte(OP_NIL), byte(OP_RETURN))
+	} else {
+		p.parseExpr(LOWEST_PREC + 1)
+		p.emitByte(byte(OP_RETURN))
+	}
+	p.consume(SEMI)
+}
+
+func (p *Parser) decl() {
 	t := p.Peek(0)
 	switch t.Kind {
+	case FUNC:
+		p.funcDecl()
 	case LET:
 		p.varDecl()
 	default:
@@ -292,7 +407,7 @@ func (p *ParserCompiler) decl() {
 }
 
 // pratt parser
-func (p *ParserCompiler) parseExpr(mprec int) {
+func (p *Parser) parseExpr(mprec int) {
 	lt := p.Next()
 	switch lt.Kind {
 	case ADD:
@@ -313,13 +428,15 @@ func (p *ParserCompiler) parseExpr(mprec int) {
 	case INT_LIT:
 		ival, err := strconv.ParseInt(*lt.Lit, 10, 64)
 		if err != nil {
-			panic(err.Error())
+			p.isPanic = true
+			return
 		}
 		p.emitConst(IntValue(ival))
 	case FLOAT_LIT:
 		fval, err := strconv.ParseFloat(*lt.Lit, 10)
 		if err != nil {
-			panic(err.Error())
+			p.isPanic = true
+			return
 		}
 		p.emitConst(FloatValue(fval))
 	case STR_LIT:
@@ -330,12 +447,14 @@ func (p *ParserCompiler) parseExpr(mprec int) {
 		ind := p.localIndex(lt)
 		is_local := ind != -1
 		if !is_local {
-			ind = p.curChunk.AddConst(StringObject{inner: lt.Lit})
+			ind = p.function.chunk.AddConst(StringObject{inner: lt.Lit})
 		}
 		p.getVar(is_local, ind)
+	case NIL:
+		p.emitConst(NilObject{})
 	default: // unreachable
-		fmt.Println(lt)
-		panic("unreachable")
+		p.isPanic = true
+		return
 	}
 	for {
 		op := p.Peek(0)
@@ -345,6 +464,23 @@ func (p *ParserCompiler) parseExpr(mprec int) {
 		}
 		p.Next()
 		switch op.Kind {
+		case LPAREN:
+			args_count := 0
+			for {
+				t := p.Peek(0)
+				if t.Kind == RPAREN || t.Kind == EOF {
+					break
+				}
+				p.parseExpr(LOWEST_PREC + 1)
+				args_count += 1
+				t = p.Peek(0)
+				if t.Kind == RPAREN || t.Kind == EOF {
+					break
+				}
+				p.consume(COMMA)
+			}
+			p.consume(RPAREN)
+			p.emitByte(byte(OP_CALL), byte(args_count))
 		case MUL:
 			p.parseExpr(cprec + 1)
 			p.emitByte(byte(OP_MULT))
@@ -400,21 +536,23 @@ func (p *ParserCompiler) parseExpr(mprec int) {
 			p.parseExpr(cprec + 1)
 			p.emitByte(byte(OP_LOR))
 		default: //unreachable
-			panic("unreachable")
+			p.isPanic = true
+			return
 		}
 	}
 	// parse primary expression
 }
 
-func (p *ParserCompiler) compile() {
+func (p *Parser) compile() {
 	for {
 		if p.Peek(0).Kind == EOF {
 			break
 		}
 		if p.Peek(0).Kind == ILLEGAL {
-			panic("error invalid character")
+			p.isPanic = true
+			return
 		}
 		p.decl()
 	}
-	p.emitByte(byte(OP_RETURN))
+	p.emitByte(byte(OP_NIL), byte(OP_RETURN))
 }
