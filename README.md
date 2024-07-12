@@ -58,9 +58,9 @@ $ ./glox test.glox
 ```
 
 ## Useful resources
-https://interpreterbook.com/
-https://craftinginterpreters.com/
-https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
-https://en.wikipedia.org/wiki/Operator-precedence_parser
-https://github.com/golang/go/tree/master/src/go
+https://interpreterbook.com/ <br>
+https://craftinginterpreters.com/ <br>
+https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html <br>
+https://en.wikipedia.org/wiki/Operator-precedence_parser <br>
+https://github.com/golang/go/tree/master/src/go <br>
 
