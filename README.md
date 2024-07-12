@@ -1,5 +1,5 @@
 # GLOX
-The goal of this project was to create a simple programming language and learn about bytecode-compiler/virtual-machine. It is heavily inspired by Robert Nystrom's book "crafting interpreters" and implements features from chapter 14 to 24. But I made a few changes, which are listed below.
+The goal of this project was to create a simple programming language and learn about bytecode-compiler/virtual-machine. It is heavily inspired by Robert Nystrom's book "crafting interpreters" and implements features from chapter 14 to 24. But I've made a few changes, which are listed below.
 
 ## changes
 - there are two type of numbers float64 and int64
