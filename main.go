@@ -14,6 +14,6 @@ func main() {
 		return
 	}
 	if err := glox.Interpret(string(s)); err != nil {
-        fmt.Println("ERROR: ", err.Error())
+		fmt.Println("ERROR: ", err.Error())
 	}
 }

@@ -17,7 +17,7 @@ assignStmt
 breakStmt
 
 --- declaration ---
-structDecl
+structDecl // TODO
 funcDecl
 varDecl
 statement

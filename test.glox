@@ -10,7 +10,7 @@ print "factorial of", n, "is", fact(n);
 
 let i = 0;
 let sm = 0;
-while i <= 1_000_000 {
+while i < 1_000_000 {
     i += 1;
     sm += i;
 }
