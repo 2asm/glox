@@ -51,7 +51,7 @@ print sm;
 
 ## try it out
 ``` Console
-$ git clone github.com/2asm/glox
+$ git clone https://github.com/2asm/glox
 $ cd glox
 $ go build .
 $ ./glox test.glox
